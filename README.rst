@@ -10,12 +10,11 @@ any ``datasette`` server using a familiar dataframe-like API (rather than SQL).
 Installation
 ------------
 
-Currently ``ibis-datasette`` is unreleased. It can be installed from GitHub
-using ``pip``:
+``ibis-datasette`` is available on pypi_:
 
 .. code-block::
 
-    $ pip install git+https://github.com/jcrist/ibis-datasette
+    $ pip install ibis-datasette
 
 
 Usage
@@ -70,6 +69,7 @@ New BSD. See the `License File`_.
 .. |pypi| image:: https://img.shields.io/pypi/v/ibis-datasette.svg
    :target: https://pypi.org/project/ibis-datasette/
 
+.. _pypi: https://pypi.org/project/ibis-datasette/
 .. _ibis: https://ibis-project.org/
 .. _datasette: https://datasette.io/
 .. _full URL to a database: https://docs.datasette.io/en/stable/pages.html#database
