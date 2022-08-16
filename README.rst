@@ -1,6 +1,8 @@
 ibis-datasette
 ==============
 
+|github|
+
 ``ibis-datasette`` provides a datasette_ backend for ibis_. This lets you query
 any ``datasette`` server using a familiar dataframe-like API (rather than SQL).
 
@@ -63,6 +65,8 @@ LICENSE
 
 New BSD. See the `License File`_.
 
+.. |github| image:: https://github.com/jcrist/ibis-datasette/actions/workflows/ci.yml/badge.svg
+   :target: https://github.com/jcrist/ibis-datasette/actions/workflows/ci.yml
 
 .. _ibis: https://ibis-project.org/
 .. _datasette: https://datasette.io/
