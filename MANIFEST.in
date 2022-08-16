@@ -1,0 +1,6 @@
+include ibis_datasette/*.py
+include setup.py
+include versioneer.py
+include README.rst
+include LICENSE
+include MANIFEST.in
