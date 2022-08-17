@@ -1,5 +1,7 @@
 import functools
 import urllib.parse
+import contextvars
+import contextlib
 from urllib.parse import urlencode
 
 import httpx
@@ -10,31 +12,43 @@ from ibis.backends.base.sql.alchemy import BaseAlchemyBackend
 from ibis.backends.sqlite.compiler import SQLiteCompiler
 
 
-class _ReflectionCache:
-    """The SQLiteDialect in sqlalchemy doesn't use the reflection cache
-    for pragmas, which can result in excess queries. Since datasette databases
-    are generally immutable, we use our own caching mechanism for reflection
-    operations to further reduce queries"""
+_cacheable = contextvars.ContextVar("cacheable", default=False)
+
+
+@contextlib.contextmanager
+def cacheable():
+    """A contextmanager for marking a request as cacheable"""
+    t = _cacheable.set(True)
+    try:
+        yield
+    finally:
+        _cacheable.reset(t)
+
+
+class _Client:
+    def __init__(self, client, base_url):
+        self._client = client
+        self._base_url = base_url
+
+    def _get(self, suffix):
+        url = self._base_url + suffix
+        resp = self._client.get(url)
+        try:
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                raise ValueError(f"{url!r} is not a valid datasette URL") from exc
+            raise
+        return resp
 
     @functools.lru_cache(32)
-    def _execute(self, statement, scalar=True):
-        res = self.connection.exec_driver_sql(statement)
-        if scalar:
-            return res.scalar()
-        else:
-            return res.fetchall()
+    def _cached_get(self, url):
+        return self._get(url)
 
-    def execute(self, connection, statement, scalar=True):
-        try:
-            # Pass connection out-of-band so it doesn't affect
-            # the lru cache
-            self.connection = connection
-            return self._execute(statement, scalar=scalar)
-        finally:
-            self.connection = None
-
-
-_RCACHE = _ReflectionCache()
+    def get(self, url):
+        if _cacheable.get():
+            return self._cached_get(url)
+        return self._get(url)
 
 
 class Cursor:
@@ -128,19 +142,10 @@ class Cursor:
 
 class Connection:
     def __init__(self, client, base_url):
-        self._client = client
-        self._base_url = base_url
+        self._client = _Client(client, base_url)
 
     def _get(self, suffix):
-        url = self._base_url + suffix
-        resp = self._client.get(url)
-        try:
-            resp.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            if exc.response.status_code == 404:
-                raise ValueError(f"{url!r} is not a valid datasette URL") from exc
-            raise
-        return resp
+        return self._client.get(suffix)
 
     def __enter__(self):
         return self
@@ -206,7 +211,8 @@ class IbisDatasetteDialect(sa.dialects.sqlite.base.SQLiteDialect):
             f"SELECT sql FROM sqlite_master WHERE name = {qtable} "
             f"AND type in ('table', 'view')"
         )
-        value = _RCACHE.execute(connection, s, scalar=True)
+        with cacheable():
+            value = connection.exec_driver_sql(s).scalar()
         if value is None and not self._is_sys_table(table_name):
             raise sa.exc.NoSuchTableError(table_name)
         return value
@@ -214,7 +220,8 @@ class IbisDatasetteDialect(sa.dialects.sqlite.base.SQLiteDialect):
     def _get_table_pragma(self, connection, pragma, table_name, schema=None):
         qtable = self.identifier_preparer.quote_identifier(table_name)
         s = f"SELECT * FROM pragma_{pragma}({qtable})"
-        return _RCACHE.execute(connection, s, scalar=False)
+        with cacheable():
+            return connection.exec_driver_sql(s).fetchall()
 
     def _get_server_version_info(self, connection):
         # XXX: We can't know the sqlite version on the remote, assume it's
@@ -283,6 +290,18 @@ class Backend(BaseAlchemyBackend):
             schema=schema or self.current_database,
             autoload=autoload,
         )
+
+    def list_tables(self, like=None, database=None):
+        """List the tables in the database.
+
+        Parameters
+        ----------
+        like
+            A pattern to use for listing tables.
+
+        """
+        with cacheable():
+            return super().list_tables(like=like, database=database)
 
     def table(self, name):
         """Create a table expression from a table in the SQLite database.
