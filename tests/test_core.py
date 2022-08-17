@@ -73,19 +73,34 @@ def datasette(database):
     time.sleep(1.5)
     # Check it started successfully
     assert not ds_proc.poll(), ds_proc.stdout.read().decode("utf-8")
-    yield "http://127.0.0.1:8041/test"
+    yield "http://127.0.0.1:8041"
     # Shut it down at the end of the pytest session
     ds_proc.terminate()
 
 
-def test_list_tables(datasette):
-    con = ibis.datasette.connect(datasette)
+@pytest.fixture
+def url(datasette):
+    return datasette + "/test"
+
+
+def test_connect_errors_not_database_url(datasette):
+    with pytest.raises(ValueError, match="`connect` expects"):
+        ibis.datasette.connect(datasette)
+
+
+def test_connect_errors_invalid_url(url):
+    with pytest.raises(ValueError, match="is not a valid datasette URL"):
+        ibis.datasette.connect(url + "/missing")
+
+
+def test_list_tables(url):
+    con = ibis.datasette.connect(url)
     tables = sorted(con.list_tables())
     assert tables == ["table1", "table2"]
 
 
-def test_access_table(datasette):
-    con = ibis.datasette.connect(datasette)
+def test_access_table(url):
+    con = ibis.datasette.connect(url)
     t1 = con.tables.table1
     assert t1.columns == ["col1", "col2", "col3", "col4"]
     schema = ibis.schema(
@@ -99,22 +114,22 @@ def test_access_table(datasette):
     assert t1.schema() == schema
 
 
-def test_table_does_not_exist(datasette):
-    con = ibis.datasette.connect(datasette)
+def test_table_does_not_exist(url):
+    con = ibis.datasette.connect(url)
     with pytest.raises(AttributeError):
         con.tables.missing
 
 
-def test_table_query(datasette):
-    con = ibis.datasette.connect(datasette)
+def test_table_query(url):
+    con = ibis.datasette.connect(url)
     t1 = con.tables.table1
     query = t1.group_by(t1.col2).col3.mean()
     out = query.execute()
     assert len(out) == len(NAMES)
 
 
-def test_table_limit(datasette):
-    con = ibis.datasette.connect(datasette)
+def test_table_limit(url):
+    con = ibis.datasette.connect(url)
     t1 = con.tables.table1
     out = t1.limit(123).execute()
     assert len(out) == 123
