@@ -60,9 +60,7 @@ class Cursor:
         self._next = None
         self._rows = None
 
-        resp = self._conn._client.get(query_string)
-        resp.raise_for_status()
-        json = resp.json()
+        json = self._conn._get(query_string).json()
 
         self._description = [
             (col, None, None, None, None, None, None) for col in json["columns"]
@@ -129,8 +127,26 @@ class Cursor:
 
 
 class Connection:
-    def __init__(self, base_url):
-        self._client = httpx.Client(follow_redirects=True, base_url=base_url)
+    def __init__(self, client, base_url):
+        self._client = client
+        self._base_url = base_url
+
+    def _get(self, suffix):
+        url = self._base_url + suffix
+        resp = self._client.get(url)
+        try:
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                raise ValueError(f"{url!r} is not a valid datasette URL") from exc
+            raise
+        return resp
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args, **kwargs):
+        self.close()
 
     def cursor(self):
         return Cursor(self)
@@ -139,7 +155,7 @@ class Connection:
         pass
 
     def close(self):
-        self._client.close()
+        pass
 
 
 class DBAPI:
@@ -156,11 +172,12 @@ class IbisDatasetteDialect(sa.dialects.sqlite.base.SQLiteDialect):
     driver = "ibis_datasette"
     supports_statement_cache = True
 
+    @functools.cached_property
+    def httpx_client(self):
+        return httpx.Client(follow_redirects=True)
+
     def connect(self, *args, **kwargs):
-        base_url = kwargs["url"]
-        if not base_url.endswith(".json"):
-            base_url += ".json"
-        return Connection(base_url)
+        return Connection(self.httpx_client, kwargs["url"])
 
     @classmethod
     def get_pool_class(cls, url):
@@ -233,9 +250,29 @@ class Backend(BaseAlchemyBackend):
         return r
 
     def do_connect(self, url):
-        self.database_name = "main"
+        parsed = urllib.parse.urlparse(url)
+        if not parsed.path:
+            raise ValueError(
+                f"`connect` expects a datasette URL including the path for a "
+                f"specific database, got {url!r}"
+            )
+        if not url.endswith(".json"):
+            url += ".json"
+
         query = urllib.parse.urlencode({"url": url})
         engine = sa.create_engine(url=f"ibisdatasette://?{query}")
+
+        with engine.dialect.connect(url=url) as con:
+            resp = con._get("")
+            json = resp.json()
+
+            if not json.get("allow_execute_sql", False):
+                raise ValueError(
+                    "This datasette instance disallows custom SQL queries; "
+                    "ibis-datasette cannot query it."
+                )
+
+        self.database_name = "main"
         super().do_connect(engine)
         self._meta = sa.MetaData(bind=self.con)
 
