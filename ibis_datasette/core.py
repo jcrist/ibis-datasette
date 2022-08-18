@@ -37,7 +37,10 @@ class _Client:
             resp.raise_for_status()
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 404:
-                raise ValueError(f"{url!r} is not a valid datasette URL") from exc
+                raise ValueError(f"{url!r} is not a valid datasette URL") from None
+            elif exc.response.status_code == 400:
+                json = exc.response.json()
+                raise ValueError(json["error"]) from None
             raise
         return resp
 
