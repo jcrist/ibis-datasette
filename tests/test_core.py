@@ -133,3 +133,18 @@ def test_table_limit(url):
     t1 = con.tables.table1
     out = t1.limit(123).execute()
     assert len(out) == 123
+
+
+@pytest.mark.parametrize("bound", [200, 200.5])
+def test_numeric_query_parameters(url, bound):
+    con = ibis.datasette.connect(url)
+    t1 = con.tables.table1
+    query = t1.group_by("col2").count().filter(lambda _: _["count"] > bound)
+    out = query.execute()
+    assert len(out)  # out is empty if bound interpreted as string
+
+
+def test_string_query_parameters(url):
+    con = ibis.datasette.connect(url)
+    t1 = con.tables.table1
+    assert t1.filter(t1.col2 == "alice").count().execute()
