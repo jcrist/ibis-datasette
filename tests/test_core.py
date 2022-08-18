@@ -148,3 +148,9 @@ def test_string_query_parameters(url):
     con = ibis.datasette.connect(url)
     t1 = con.tables.table1
     assert t1.filter(t1.col2 == "alice").count().execute()
+
+
+def test_api_error_raised(url):
+    con = ibis.datasette.connect(url)
+    with pytest.raises(ValueError, match="missing"):
+        con.raw_sql("SELECT * FROM missing")
