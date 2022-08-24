@@ -17,3 +17,4 @@ dependencies:
   - toolz
   - pip:
       - git+https://github.com/ibis-project/ibis.git
+      - ibis-datasette
