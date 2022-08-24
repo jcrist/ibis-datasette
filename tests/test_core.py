@@ -1,11 +1,14 @@
+import functools
+import operator
 import random
 import sqlite3
 import string
 import subprocess
 import time
 
-import ibis
 import pytest
+import ibis
+from ibis import _
 
 
 def randstr():
@@ -142,6 +145,15 @@ def test_numeric_query_parameters(url, bound):
     query = t1.group_by("col2").count().filter(lambda _: _["count"] > bound)
     out = query.execute()
     assert len(out)  # out is empty if bound interpreted as string
+
+
+def test_many_query_parameters(url):
+    con = ibis.datasette.connect(url)
+    query = con.tables.table1.filter(
+        functools.reduce(operator.or_, (_.col3 == x for x in range(30)))
+    ).col3.nunique()
+    out = query.execute()
+    assert out == 30
 
 
 def test_string_query_parameters(url):
