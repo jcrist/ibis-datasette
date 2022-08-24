@@ -3,10 +3,16 @@
 # be ignored.
 FROM python:3.10-slim
 
-ENV USER jovyan
-ENV HOME /home/jovyan
+ARG NB_USER=jovyan
+ARG NB_UID=1000
+ENV USER ${NB_USER}
+ENV NB_UID ${NB_UID}
+ENV HOME /home/${NB_USER}
 
-RUN adduser --disabled-password --gecos "Default user" --uid 1000 ${USER}
+RUN adduser --disabled-password \
+    --gecos "Default user" \
+    --uid ${NB_UID} \
+    ${NB_USER}
 
 RUN apt-get update && \
     apt-get install -y ffmpeg git && \
@@ -27,7 +33,7 @@ RUN pip install --no-cache --upgrade pip \
     && find /usr/local/lib/python3.10/site-packages/ -follow -type f -name '*.pyc' -delete \
     && find /usr/local/lib/python3.10/site-packages/ -follow -type f -name '*.js.map' -delete
 
-COPY --chown=1000 examples ${HOME}
+COPY --chown=${NB_UID} examples ${HOME}
 
 USER ${USER}
 WORKDIR ${HOME}
