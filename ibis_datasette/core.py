@@ -114,7 +114,11 @@ class Cursor:
                     "qmark (?) style parametrized queries are not supported"
                 )
             else:
-                for k, v in parameters.items():
+                # XXX: Traverse in reverse order to ensure replacements don't
+                # ever conflict (if we replace param_2 before param_20, we can
+                # end up accidentally overwriting param_20). All of this is bad
+                # and hacky.
+                for k, v in sorted(parameters.items(), reverse=True):
                     if isinstance(v, bool):
                         v = int(v)
                     if isinstance(v, (int, float)):
